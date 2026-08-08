@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { uploadImageToImgbb } from "../data/imgbb.js";
 import "./WorkerForm.css";
 
 const SECTIONS = [
@@ -19,13 +20,16 @@ const emptyForm = {
   photo: "",
 };
 
-export default function WorkerForm({ initial, onSave, onCancel }) {
+export default function WorkerForm({ initial, onSave, onCancel, saving }) {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [preview, setPreview] = useState(""); // local preview shown while uploading
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     setForm(initial ? { ...emptyForm, ...initial } : emptyForm);
+    setPreview("");
     setError("");
   }, [initial]);
 
@@ -33,16 +37,30 @@ export default function WorkerForm({ initial, onSave, onCancel }) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setError("Please choose an image file.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => update("photo", reader.result);
-    reader.readAsDataURL(file);
+
+    // Show an instant local preview while the real upload happens.
+    const localUrl = URL.createObjectURL(file);
+    setPreview(localUrl);
+    setError("");
+    setUploading(true);
+
+    try {
+      const hostedUrl = await uploadImageToImgbb(file);
+      update("photo", hostedUrl);
+    } catch (err) {
+      console.error(err);
+      setError("Photo upload failed. Check your ImgBB API key and internet connection.");
+      setPreview("");
+    } finally {
+      setUploading(false);
+    }
   }
 
   function handleSubmit(e) {
@@ -51,9 +69,15 @@ export default function WorkerForm({ initial, onSave, onCancel }) {
       setError("Name, phone number and job role are required.");
       return;
     }
+    if (uploading) {
+      setError("Please wait for the photo to finish uploading.");
+      return;
+    }
     setError("");
     onSave(form);
   }
+
+  const photoToShow = preview || form.photo;
 
   return (
     <div className="worker-form-overlay" role="dialog" aria-modal="true">
@@ -72,8 +96,8 @@ export default function WorkerForm({ initial, onSave, onCancel }) {
 
         <div className="worker-form__photo-row">
           <div className="worker-form__photo-preview">
-            {form.photo ? (
-              <img src={form.photo} alt="" />
+            {photoToShow ? (
+              <img src={photoToShow} alt="" />
             ) : (
               <span>{form.name?.[0]?.toUpperCase() || "?"}</span>
             )}
@@ -83,8 +107,9 @@ export default function WorkerForm({ initial, onSave, onCancel }) {
               type="button"
               className="worker-form__upload-btn"
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
             >
-              {form.photo ? "Change photo" : "Upload photo"}
+              {uploading ? "Uploading…" : form.photo ? "Change photo" : "Upload photo"}
             </button>
             <input
               ref={fileInputRef}
@@ -93,7 +118,9 @@ export default function WorkerForm({ initial, onSave, onCancel }) {
               hidden
               onChange={handlePhoto}
             />
-            <p className="worker-form__hint">JPG or PNG, stored on this device only.</p>
+            <p className="worker-form__hint">
+              JPG or PNG. Hosted on ImgBB so it loads on every customer's phone.
+            </p>
           </div>
         </div>
 
@@ -144,11 +171,20 @@ export default function WorkerForm({ initial, onSave, onCancel }) {
         {error && <p className="worker-form__error">{error}</p>}
 
         <div className="worker-form__actions">
-          <button type="button" className="worker-form__cancel" onClick={onCancel}>
+          <button
+            type="button"
+            className="worker-form__cancel"
+            onClick={onCancel}
+            disabled={saving}
+          >
             Cancel
           </button>
-          <button type="submit" className="worker-form__submit">
-            {initial ? "Save changes" : "Add worker"}
+          <button
+            type="submit"
+            className="worker-form__submit"
+            disabled={saving || uploading}
+          >
+            {saving ? "Saving…" : initial ? "Save changes" : "Add worker"}
           </button>
         </div>
       </form>

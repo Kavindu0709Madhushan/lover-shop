@@ -1,49 +1,58 @@
-// All worker data lives in the browser's localStorage.
-// This is a frontend-only system: nothing is sent to any server.
+// Shared data layer backed by Firebase Firestore.
+// This makes worker data visible from ANY device/browser - not just the
+// one that added it - which is what makes QR scanning work from a
+// customer's own phone. See README.md for how to set up your free
+// Firebase project and connect it here.
 
-const STORAGE_KEY = "bloomtag_workers";
+import { db } from "./firebase.js";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
 
-function readAll() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    console.error("Could not read workers from localStorage", err);
-    return [];
-  }
+const workersCol = collection(db, "workers");
+
+export async function getWorkers() {
+  const snap = await getDocs(query(workersCol, orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => d.data());
 }
 
-function writeAll(workers) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(workers));
+// Real-time subscription: any change (from any device) updates every
+// admin dashboard that's currently open, automatically.
+export function subscribeToWorkers(onData, onError) {
+  const q = query(workersCol, orderBy("createdAt", "desc"));
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => d.data())),
+    (err) => {
+      console.error(err);
+      if (onError) onError(err);
+    }
+  );
 }
 
-export function getWorkers() {
-  return readAll().sort((a, b) => b.createdAt - a.createdAt);
+export async function getWorkerById(id) {
+  const snap = await getDoc(doc(workersCol, id));
+  return snap.exists() ? snap.data() : null;
 }
 
-export function getWorkerById(id) {
-  return readAll().find((w) => w.id === id) || null;
-}
-
-export function saveWorker(worker) {
-  const workers = readAll();
-  const index = workers.findIndex((w) => w.id === worker.id);
-  if (index >= 0) {
-    workers[index] = worker;
-  } else {
-    workers.push(worker);
-  }
-  writeAll(workers);
+export async function saveWorker(worker) {
+  await setDoc(doc(workersCol, worker.id), worker);
   return worker;
 }
 
-export function deleteWorker(id) {
-  const workers = readAll().filter((w) => w.id !== id);
-  writeAll(workers);
+export async function deleteWorker(id) {
+  await deleteDoc(doc(workersCol, id));
 }
 
 export function makeWorkerId() {
-  // Short, URL-friendly unique id, e.g. "w-l3f9a2k1"
   return "w-" + Math.random().toString(36).slice(2, 10);
 }
 

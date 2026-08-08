@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
-  getWorkers,
+  subscribeToWorkers,
   saveWorker,
   deleteWorker,
   makeWorkerId,
@@ -11,28 +11,54 @@ import IdTag from "../components/IdTag.jsx";
 import "./AdminDashboard.css";
 
 export default function AdminDashboard() {
-  const [workers, setWorkers] = useState(() => getWorkers());
+  const [workers, setWorkers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(null); // null = closed, {} = new, worker = edit
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [saving, setSaving] = useState(false);
   const qrRefs = useRef({});
 
-  function refresh() {
-    setWorkers(getWorkers());
+  useEffect(() => {
+    const unsubscribe = subscribeToWorkers(
+      (list) => {
+        setWorkers(list);
+        setLoading(false);
+        setLoadError(false);
+      },
+      () => {
+        setLoading(false);
+        setLoadError(true);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  async function handleSave(formData) {
+    setSaving(true);
+    try {
+      const worker = editing?.id
+        ? { ...editing, ...formData }
+        : { ...formData, id: makeWorkerId(), createdAt: Date.now() };
+      await saveWorker(worker);
+      setEditing(null);
+    } catch (err) {
+      console.error(err);
+      alert("Could not save this worker. Check your Firebase setup and internet connection.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleSave(formData) {
-    const worker = editing?.id
-      ? { ...editing, ...formData }
-      : { ...formData, id: makeWorkerId(), createdAt: Date.now() };
-    saveWorker(worker);
-    setEditing(null);
-    refresh();
-  }
-
-  function handleDelete(id) {
-    deleteWorker(id);
-    setConfirmDelete(null);
-    refresh();
+  async function handleDelete(id) {
+    try {
+      await deleteWorker(id);
+    } catch (err) {
+      console.error(err);
+      alert("Could not remove this worker. Check your internet connection.");
+    } finally {
+      setConfirmDelete(null);
+    }
   }
 
   const downloadQr = useCallback((worker) => {
@@ -52,7 +78,7 @@ export default function AdminDashboard() {
           <h1>Bloom &amp; Tag</h1>
           <p className="admin__sub">
             Add your team, then print or share each person's QR tag. Customers
-            scan it to see who they're talking to.
+            scan it to see who they're talking to - from any phone, anywhere.
           </p>
         </div>
         <button className="admin__add-btn" onClick={() => setEditing({})}>
@@ -60,7 +86,16 @@ export default function AdminDashboard() {
         </button>
       </header>
 
-      {workers.length === 0 ? (
+      {loadError && (
+        <div className="admin__banner admin__banner--error">
+          Couldn't connect to the database. Double check your Firebase config
+          in <code>.env</code> (see README.md) and your internet connection.
+        </div>
+      )}
+
+      {loading ? (
+        <p className="admin__loading">Loading staff…</p>
+      ) : workers.length === 0 ? (
         <div className="admin__empty">
           <p>No workers added yet.</p>
           <button className="admin__add-btn" onClick={() => setEditing({})}>
@@ -100,7 +135,8 @@ export default function AdminDashboard() {
         <WorkerForm
           initial={editing.id ? editing : null}
           onSave={handleSave}
-          onCancel={() => setEditing(null)}
+          onCancel={() => !saving && setEditing(null)}
+          saving={saving}
         />
       )}
 

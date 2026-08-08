@@ -1,72 +1,109 @@
 # Bloom & Tag — Flower Shop Staff QR System
 
-Frontend-only React app. No backend, no database — everything is saved in the
-browser's `localStorage`.
+React + Vite app. Worker data lives in **Firebase Firestore** (Google's free
+cloud database) so that a QR code scanned from *any* customer's phone shows
+the same worker details you added from the shop's laptop/tablet — no matter
+what device or browser each side is using.
+
+There is no custom backend server to write or host — the React app talks
+directly to Firestore from the browser using Firebase's client SDK.
 
 ## How it works
 
 - **`/` (Staff Directory / Admin page)** — add workers with a photo, name,
-  phone number, work section and job role. Each worker automatically gets a
-  unique QR code.
+  phone number, work section and job role. Each worker gets a unique QR code.
 - **`/w/:id` (Public profile page)** — this is what the QR code points to.
-  When a customer scans a worker's QR code with their phone camera, it opens
-  this page and shows that worker's photo, name, phone, section and role.
+  Any phone that scans it loads this page straight from Firestore.
 
-⚠️ **Important limitation of a frontend-only setup:** because data lives in
-`localStorage`, it only exists in the browser that added it. If you only run
-this on `npm run dev` on your laptop, a customer's phone camera won't be able
-to reach that data. To make scanning actually work in the shop:
+## 1. Create your free Firebase project
 
-1. Build the app (`npm run build`) and deploy the `dist/` folder to any free
-   static host (Netlify, Vercel, GitHub Pages, etc.) so it has a public URL.
-2. Open that public URL on the device you'll use to **add workers** (e.g. the
-   shop's tablet/computer) and add everyone there.
-3. Print/download each worker's QR from that same device.
+1. Go to <https://console.firebase.google.com> and sign in with a Google account.
+2. Click **Add project**, give it a name (e.g. `bloom-and-tag`), and finish
+   the wizard (you can turn off Google Analytics — not needed here).
+3. Once the project opens, click the **`</>` (web) icon** to add a web app.
+   Give it a nickname and click **Register app**. You'll now see a
+   `firebaseConfig` object with keys like `apiKey`, `authDomain`, etc. —
+   keep this tab open, you'll need these values in step 3 below.
+4. In the left sidebar, go to **Build → Firestore Database → Create database**.
+   Choose a region close to you, and start in **test mode** for now (lets the
+   app read/write freely — fine for a small internal tool; see the security
+   note at the bottom of this file).
 
-Because the QR encodes a link back to that public URL, any customer's phone
-can open the page — but the worker details are still only stored in the
-browser of the device that added them, not shared globally. For details to
-reliably appear on *every* customer's phone regardless of which device added
-them, you'd eventually need a small backend/database instead of
-`localStorage`. This project is built exactly as requested — frontend only —
-so keep that trade-off in mind.
+## 1b. Create a free ImgBB account (for worker photos)
 
-## Project setup commands
+Worker photos are hosted on **ImgBB** instead of being stored inside
+Firestore. This keeps each worker's database record small and photos load
+fast on any customer's phone, straight from ImgBB's own servers.
+
+1. Go to <https://api.imgbb.com/> and sign in / create a free account.
+2. Copy the API key shown on that page — you'll paste it into `.env` in step 3.
+
+## 2. Project setup commands
 
 ```bash
-# 1. Create the project
-npm create vite@latest flower-shop-worker-id -- --template react
-cd flower-shop-worker-id
-
-# 2. Install dependencies
 npm install
-npm install react-router-dom qrcode.react
+```
 
-# 3. Run the dev server
+(`firebase`, `react-router-dom` and `qrcode.react` are already listed in
+`package.json`, so this one command installs everything.)
+
+## 3. Connect your Firebase + ImgBB keys
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and paste in the matching values from the `firebaseConfig`
+object (step 1.3) and your ImgBB API key (step 1b):
+
+```
+VITE_FIREBASE_API_KEY=AIza...
+VITE_FIREBASE_AUTH_DOMAIN=bloom-and-tag.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=bloom-and-tag
+VITE_FIREBASE_STORAGE_BUCKET=bloom-and-tag.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+VITE_IMGBB_API_KEY=abcdef1234567890abcdef1234567890
+```
+
+`.env` is already in `.gitignore`, so these keys won't get committed to git.
+
+## 4. Run it locally
+
+```bash
 npm run dev
 ```
 
-Open the printed local URL (usually `http://localhost:5173`).
+Add a worker, then open their profile URL on your phone (same wifi isn't
+even required — Firestore is cloud-hosted) to confirm it loads.
 
-## Building for production
+## 5. Deploy so any customer's phone can scan it
 
 ```bash
 npm run build
-npm run preview   # optional: preview the production build locally
 ```
 
-Production files are written to `dist/`. Upload that folder's contents to
-any static host to make it reachable from customers' phones.
+Push to GitHub and deploy on Vercel (Import Git Repository → it auto-detects
+Vite). **Important:** add the same seven `VITE_FIREBASE_...` / `VITE_IMGBB_...`
+values from your `.env` file into **Vercel → Project → Settings →
+Environment Variables**, then redeploy — otherwise the live site won't be
+able to reach Firestore or upload photos.
+
+Once deployed, add your real workers **from the live URL** (or locally, it
+doesn't matter anymore — both read/write the same Firestore database now).
+Download each worker's QR from the dashboard and print it. Any phone
+scanning it will load that worker's profile straight from Firestore.
 
 ## Project structure
 
 ```
 src/
   data/
-    storage.js          # all localStorage read/write helpers
+    firebase.js         # Firebase app + Firestore init (reads .env)
+    storage.js           # Firestore read/write helpers (shared across devices)
   components/
-    IdTag.jsx / .css     # the plant-tag styled worker card + QR code
-    WorkerForm.jsx / .css # add / edit worker modal form
+    IdTag.jsx / .css      # plant-tag styled worker card + QR code
+    WorkerForm.jsx / .css  # add / edit worker modal form
   pages/
     AdminDashboard.jsx / .css  # "/" staff directory & management
     WorkerProfile.jsx / .css   # "/w/:id" public page shown after scanning
@@ -74,11 +111,27 @@ src/
   main.jsx   # app entry, wraps App in HashRouter
 ```
 
-## Notes
+## Notes & security
 
-- Photos are stored as base64 directly inside `localStorage` — keep photos
-  reasonably small (a phone photo resized to a few hundred KB is plenty).
-- QR codes encode a full URL (`.../#/w/<workerId>`), so scanning with any
-  phone camera app opens the profile directly — no extra app needed.
-- Click **Download QR** on any worker card in the dashboard to save that
-  worker's QR code as a PNG you can print onto a badge or lanyard.
+- Worker photos are uploaded to ImgBB and only the resulting URL is stored
+  in Firestore — keeps documents small and photos load fast for customers.
+- **Test mode Firestore rules allow anyone with your project's API key to
+  read *and write* the `workers` collection.** That's fine to get started,
+  but before relying on this for a real shop, tighten the rules in
+  **Firestore → Rules**, e.g. allow public `read`, but require Firebase Auth
+  (sign-in) for `write` so only staff can add/edit/delete workers:
+
+  ```
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /workers/{workerId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+  }
+  ```
+
+  Adding a login screen for the admin page is a natural next step if you
+  want that extra protection — ask if you'd like this built in.
