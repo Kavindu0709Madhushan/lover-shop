@@ -1,0 +1,60 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600;700&display=swap");
+
+:root {
+  --ink: #2b2a25;
+  --cream: #faf6ee;
+  --panel: #ffffff;
+  --moss: #33473a;
+  --moss-dark: #22301f;
+  --blush: #d99a8f;
+  --blush-soft: #f1d9d2;
+  --gold: #b9924c;
+  --line: #e4dccb;
+  --shadow: 0 12px 30px -14px rgba(43, 42, 37, 0.35);
+
+  --font-display: "Fraunces", serif;
+  --font-body: "Work Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--cream);
+  background-image:
+    radial-gradient(circle at 10% 10%, rgba(51, 71, 58, 0.06), transparent 40%),
+    radial-gradient(circle at 90% 20%, rgba(217, 154, 143, 0.10), transparent 45%);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--blush-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
